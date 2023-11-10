@@ -1,22 +1,27 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 爬取百度贴吧中指定帖子中的所有图片——————requests-bs4-re路线
-1.0,2.0,2.5,2.6,3.0,3.2
-3.5
+1.0,2.0,2.5,2.6,3.0,3.2,3.5
+3.6
 """
 import requests, os, re, time, random
 from bs4 import BeautifulSoup
 import threading
 
+headers = {
+    'User-Agent': 'AppleWebKit/537.36',
+    'Referer': '',
+    'Content-Type': 'application/json'
+}
 
 def getHTTPtext(url):
     try:
-        r = requests.get(url, timeout=30)
+        r = requests.get(url, timeout=30, headers=headers)
         r.raise_for_status()
         r.encoding = 'utf-8'
         return r.text
     except:
-        r = requests.get(url, timeout=30)
+        r = requests.get(url, timeout=30, headers=headers)
         r.raise_for_status()
         r.encoding = 'utf-8'
         return r.text
@@ -24,9 +29,13 @@ def getHTTPtext(url):
 
 def get_information(html, alist):
     first_soup = BeautifulSoup(html, "html.parser")
-    r2 = re.findall(r'<title>.*?_百度贴吧', html[:5000])  # FIXME 这个html[:5000]太傻了
-    r3 = r2[0].split("_")
-    title = r2[0].split("_")[0][7:]
+    try:
+        r2 = re.findall(r'<title>.*?_百度贴吧', html[:5000])  # FIXME 这个html[:5000]太傻了
+        r3 = r2[0].split("_")
+        title = r2[0].split("_")[0][7:]
+    except:
+        # 触发安全验证了 寄
+        raise "safe"
     if len(r3) == 3:
         ba_name = r3[1]
     else:
@@ -43,7 +52,7 @@ def download_pic(link, count, path_now, pn, max_page):
     path = path_now + str(count) + ".png"
     try:
         if not os.path.exists(path):
-            r = requests.get(link, timeout=30)
+            r = requests.get(link, timeout=30, headers=headers)
             with open(path, 'wb') as f:
                 f.write(r.content)
                 f.close()
@@ -56,7 +65,7 @@ def download_pic(link, count, path_now, pn, max_page):
 
 def make_path(ba_name, title):
     a = input("文件路径是否使用默认设置?若否，输入从何处开始更改(从1开始)：")
-    path_list = ['D', 'tieba_pics', ba_name, title[:15]]  # FIXME 吧名中可能出现“/”干扰此模块
+    path_list = ['D', 'tieba_pics', ba_name, title[:15]]  # FIXME 吧名中可能出现“/”干扰此模块；同时，盘符也不一定是“D”
     while a:
         a = int(a)
         b = input("现在在修改第{}层文件,输入文件名,回车以终止：".format(a))
@@ -83,11 +92,11 @@ def get_http_text(url):
     global next_soup
     threadLock.acquire()
     try:
-        r = requests.get(url, timeout=30)
+        r = requests.get(url, timeout=30, headers=headers)
         r.raise_for_status()
         r.encoding = 'utf-8'
     except:
-        r = requests.get(url, timeout=30)
+        r = requests.get(url, timeout=30, headers=headers)
         r.raise_for_status()
         r.encoding = 'utf-8'
     next_html = r.text
@@ -107,8 +116,9 @@ def get_hrefs(max_page, seelz, first_soup):
         print("\r保存成功,这是第{}张图片,现在是第1/1页".format(p_num), end='')  # 跳页时也要输出一次
         for i in first_list:
             href = i.attrs['src']
-            pic_id = href.split("/")[-1]
-            real_href = "http://tiebapic.baidu.com/forum/pic/item/" + pic_id
+            pic_id = href.split("/")[-3:]
+            # real_href = "http://tiebapic.baidu.com/forum/pic/item/" + pic_id
+            real_href = "https://tiebapic.baidu.com/forum/" + pic_id[-3] + "/" + pic_id[-2] + "/" + pic_id[-1]
             p_num += 1
             yield [p_num, 1, real_href]
 
@@ -138,7 +148,7 @@ def get_hrefs(max_page, seelz, first_soup):
             for i in first_list:
                 href = i.attrs['src']
                 pic_id = href.split("/")[-1]
-                real_href = "http://tiebapic.baidu.com/forum/pic/item/" + pic_id
+                real_href = "https://tiebapic.baidu.com/forum/" + pic_id[-3] + "/" + pic_id[-2] + "/" + pic_id[-1]
                 p_num += 1
                 yield [p_num, pn-1, real_href]
             
@@ -153,14 +163,17 @@ def main(ID):
         url = "https://tieba.baidu.com/p/" + str(ID)
     first_html = getHTTPtext(url)
     alist = []
-    first_soup = get_information(first_html, alist)
-    title, max_page, ba_name = alist[0], int(alist[1]), alist[2]
-    # 创建图片保存路径
-    path_now = make_path(ba_name, title)
-    # 开始爬取
-    for p_num, pn, real_href in get_hrefs(max_page, seelz, first_soup):
-        # 每次下载时都要输出
-        download_pic(real_href, p_num, path_now, pn, max_page)
+    try:
+        first_soup = get_information(first_html, alist)
+        title, max_page, ba_name = alist[0], int(alist[1]), alist[2]
+        # 创建图片保存路径
+        path_now = make_path(ba_name, title)
+        # 开始爬取
+        for p_num, pn, real_href in get_hrefs(max_page, seelz, first_soup):
+            # 每次下载时都要输出
+            download_pic(real_href, p_num, path_now, pn, max_page)
+    except:
+        print("已触发安全验证，请稍后再试")
     
 
 real_count = count = 0
@@ -179,11 +192,7 @@ while True:
         elif choose == "2":
             continue
         else:
-            print("？")
-            time.sleep(1)
-            print("emmmm")
-            time.sleep(1)
-            print("好吧")
+            print("无输入，默认你为退出")
             time.sleep(1)
             break
     if count == 1:
@@ -192,6 +201,8 @@ while True:
         if luck == 0:
             print("注意身体")
             time.sleep(1)
+        else:
+            print("再见")
+            time.sleep(1)
         time.sleep(1)
         break
-
